@@ -1,14 +1,22 @@
 # Olist delivery-delay prediction — real-time streaming pipeline
 
+*Course project — AI372IA Stream Processing and Analytics, Dept. of AIML, RV College of Engineering, Bengaluru.*
+
 Kafka-centred pipeline that replays real Olist orders (May–Oct 2018) and predicts late delivery at each stage:
 **Model 1** when the order is placed, a rule tag at approval, **Model 3** at carrier handoff, and the real outcome at delivery.
 
+![Architecture](docs/architecture.png)
+
+## Quick start
+
+```powershell
+git clone https://github.com/1921-affan/olist-delay-streaming.git
+cd olist-delay-streaming
+Copy-Item .env.example .env      # then open .env and set your own passwords
+powershell -ExecutionPolicy Bypass -File .\demo_reset.ps1
 ```
-orders_stream.csv ─┐                       ┌─► delay-predictions ─┬─► db-writer ──────────► PostgreSQL ─► Grafana (business)
-                   ├─► replay producer ─► orders / shipment-events ─► scorer ×3 ──┤                      └─► window-aggregator ─► PostgreSQL (1-day windows)
-shipment_events ───┘     (simulated clock)   (3 partitions, key = order_id)   (group "scorer")   └─► alerts ─► db-writer         └─► alerts (R8 region surge)
-                                                                                     Prometheus ◄── metrics from every service + Kafka lag exporter ─► Grafana (system)
-```
+
+Then open Grafana at http://localhost:3000 (login from your `.env`) and Kafka UI at http://localhost:8080. Details below.
 
 | Circular requirement | Where |
 |---|---|
@@ -28,13 +36,14 @@ shipment_events ───┘     (simulated clock)   (3 partitions, key = order_
 * **Docker Desktop** running, with **at least 6 GB memory** (Settings → Resources → Memory).
 * Free ports on your laptop: **9094** (Kafka), **8080** (Kafka UI), **5433** (PostgreSQL), **9090** (Prometheus), **3000** (Grafana).
   Kafka uses 9094 and PostgreSQL 5433 so they don't clash with a Kafka or PostgreSQL already installed on your laptop. You do not need your local Kafka for this project.
-* `data/` must contain `orders_stream.csv` and `shipment_events_enriched.csv`; `models/` must contain both `.joblib` files and both `*_test_predictions.csv` files (already included in the zip).
+* `data/` must contain `orders_stream.csv` and `shipment_events_enriched.csv`; `models/` must contain both `.joblib` files and both `*_test_predictions.csv` files (already included in this repository).
 
 All commands below are run in a terminal **inside this folder** (VS Code terminal is fine; PowerShell or bash).
 
 ## 2. Start everything
 
 ```bash
+cp .env.example .env                 # PowerShell: Copy-Item .env.example .env — then set your own passwords
 docker compose build                 # first time: ~3–5 min (installs scikit-learn 1.6.1, xgboost 3.4.1, …)
 docker compose up -d                 # starts Kafka, creates topics, PostgreSQL, 3 scorers, db-writer, aggregator, monitoring
 docker compose ps                    # all "running" / "healthy"; kafka-init shows "exited (0)"
@@ -61,7 +70,7 @@ docker compose exec postgres psql -U olist -d olist -c "SELECT stage, COUNT(*) F
 
 | UI | URL | Login |
 |---|---|---|
-| Grafana — business dashboard (home) | http://localhost:3000 | admin / admin |
+| Grafana — business dashboard (home) | http://localhost:3000 | user and password from your `.env` |
 | Grafana — system dashboard | Dashboards → *Olist delay streaming* → system view | |
 | Kafka UI (topics, partitions, consumer groups) | http://localhost:8080 | |
 | Prometheus (targets, raw metrics) | http://localhost:9090/targets | |
@@ -160,21 +169,19 @@ window_aggregator/ windows.py (tumbling windows, R8, checkpoint), aggregator.py
 infra/             kafka/create_topics.py, postgres/init.sql, prometheus/, grafana/
 ops/               verify_models.py, inject_bad_message.py, fault_demo.md
 tests/             offline tests (pytest), no Kafka needed
+data/              replay files, orders_clean.csv (training table), feature_registry.json
+models/            production Model 1 / Model 3 bundles + test predictions
+notebooks/         Colab notebooks: EDA + Model 1 selection, Model 3 feature selection, Model 3 training
+data_prep/         build_datasets.py, check_datasets.py, enrich_shipment_events.py
+training/          retrain_xgb12_corrected_split.py, model inference examples
+results/           all metrics and comparison tables behind the report
+docs/              report, synopsis, EDA, literature survey, research paper, architecture diagram
 ```
+
+To rebuild the datasets from scratch, create `olist_master_orders.csv` from the 9 Kaggle Olist files (not included) and run `python data_prep/build_datasets.py --master olist_master_orders.csv --out data`.
 
 Offline tests (optional, needs Python with pandas, scikit-learn, pytest): `python -m pytest -q tests`
 
-
-## Quick start
-
-```powershell
-git clone https://github.com/1921-affan/olist-delay-streaming.git
-cd olist-delay-streaming
-Copy-Item .env.example .env      # then open .env and set your own passwords
-powershell -ExecutionPolicy Bypass -File .\demo_reset.ps1
-```
-
-Open Grafana at http://localhost:3000 and Kafka UI at http://localhost:8080.
 
 ## Data
 
