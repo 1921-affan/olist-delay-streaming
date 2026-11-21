@@ -31,6 +31,106 @@ Then open Grafana at http://localhost:3000 (login from your `.env`) and Kafka UI
 
 ---
 
+## Dataset
+
+### Source
+
+**Brazilian E-Commerce Public Dataset by Olist** ([Kaggle](https://www.kaggle.com/datasets/olistbr/brazilian-e-commerce)): real, anonymised orders from the Olist marketplace in Brazil, placed between 2016 and 2018. It records each order's full life (purchase, payment approval, hand-over to the carrier, delivery) together with the delivery date that was **promised** to the customer, which is what makes delay prediction possible. It is split over 9 linked tables:
+
+| Table | Rows | Used for |
+|---|---:|---|
+| `olist_orders_dataset` | 99,441 | order life-cycle timestamps; source of the late label |
+| `olist_order_items_dataset` | 112,650 | price, freight, seller, seller's shipping deadline |
+| `olist_products_dataset` | 32,951 | category, weight, dimensions |
+| `olist_customers_dataset` | 99,441 | customer state and ZIP prefix |
+| `olist_sellers_dataset` | 3,095 | seller state and ZIP prefix |
+| `olist_geolocation_dataset` | 1,000,163 | ZIP-prefix coordinates (seller-to-customer distance) |
+| `olist_order_payments_dataset` | 103,886 | payment type and instalments |
+| `olist_order_reviews_dataset` | 99,224 | reviews (analysis only, never a model input) |
+| `product_category_name_translation` | 71 | English category names |
+
+The 9 tables were joined into one row per order (`olist_master_orders.csv`, 51 columns). The raw Kaggle files and the master file are **not** in this repository; download them from Kaggle to rebuild everything from scratch.
+
+### Label
+
+An order is **late** (`is_late = 1`) when it was delivered on a calendar day **after** its promised (estimated) delivery date; delivery on the promised day counts as on time. Orders that were never delivered get no label.
+
+| | Orders |
+|---|---:|
+| All orders | 99,441 |
+| Delivered (labelled) | 96,476 |
+| Late | 6,535 (6.77%) |
+| On time | 89,941 |
+| Never delivered (no label) | 2,965 |
+
+### Files in `data/`
+
+| File | Rows | Period | Contents | Used by |
+|---|---:|---|---|---|
+| `orders_clean.csv` | 94,930 orders (6,517 late, 6.9%) | Jan 2017 – Aug 2018 | delivered single-seller orders with all features, timestamps, the `split` column and the label `is_late` | model training and evaluation (`notebooks/`, `training/`) |
+| `orders_stream.csv` | 25,314 orders | placed 1 May – 29 Aug 2018 | checkout-time information only, **no label** | replay producer → topic `orders` |
+| `shipment_events_enriched.csv` | 75,380 events | May – Oct 2018 | 25,314 `order_approved`, 25,138 `handed_to_carrier`, 24,928 `delivered`; each event carries only what is known at that moment; `delivered` carries `is_late_actual`; `bad_timestamp = 1` marks 154 events dated before their order | replay producer → topic `shipment-events` |
+| `feature_registry.json` | – | – | which columns may be used at each stage and by each model (leakage guard) | data preparation, models |
+
+`models/*_test_predictions.csv` hold each model's score for every test order (May – Aug 2018); `ops/verify_models.py` uses them to prove the streaming scorer gives the same probabilities as Colab.
+
+### Columns and when they become known
+
+Every column is tagged with the stage at which it becomes known, and a model may only use columns from its own stage or earlier. This prevents the model from "seeing the future".
+
+| Stage | Columns |
+|---|---|
+| **Order placed** (23) | `promise_days`, `purchase_hour`, `purchase_weekday`, `price`, `freight`, `n_items`, `weight_g`, `volume_cm3`, `category`, `customer_state`, `seller_state`, `same_state`, `dist_km`, `pay_type`, `installments`, `seller_prior_orders`, `seller_late_rate_prior`, `seller_overrun_rate_prior`, `seller_handling_days_prior`, `route_recent_days`, `promise_buffer_route`, `promise_buffer_state`, `order_load_ratio` |
+| **Payment approved** (1) | `approval_lag_h` |
+| **Handed to carrier** (3) | `handling_days`, `seller_overrun_days`, `post_approval_days` |
+| **Delivered** | `is_late` / `is_late_actual` (the label, never an input) |
+
+Engineered columns:
+
+| Column | Meaning |
+|---|---|
+| `dist_km` | great-circle distance between the seller's and customer's ZIP-prefix centroids |
+| `promise_days` | days from purchase to the promised delivery date |
+| `route_recent_days` | recent typical delivery time on the same seller-state → customer-state route |
+| `promise_buffer_route`, `promise_buffer_state` | promised days minus the recent typical delivery time (small buffer = risky promise) |
+| `seller_prior_orders`, `seller_late_rate_prior`, `seller_overrun_rate_prior`, `seller_handling_days_prior` | the seller's past record, computed only from orders delivered **before** this order was placed |
+| `order_load_ratio` | current order volume relative to recent volume |
+| `approval_lag_h` | hours from purchase to payment approval |
+| `handling_days`, `post_approval_days` | days from purchase / approval to the carrier hand-over |
+| `seller_overrun_days` | hand-over time minus the seller's shipping limit (positive = deadline missed) |
+
+### Features used by the models
+
+| Model | Scored when | Features |
+|---|---|---|
+| **Model 1** (XGBoost, 12) | order placed | `promise_days`, `purchase_hour`, `price`, `freight`, `category`, `customer_state`, `dist_km`, `seller_overrun_rate_prior`, `seller_handling_days_prior`, `route_recent_days`, `promise_buffer_route`, `promise_buffer_state` |
+| **Model 3** (XGBoost, 10) | carrier handoff | `promise_days`, `weight_g`, `customer_state`, `dist_km`, `route_recent_days`, `promise_buffer_route`, `promise_buffer_state`, `handling_days`, `seller_overrun_days`, `post_approval_days` |
+
+### Train / calibration / test split (by time, never random)
+
+| Part | Purchase months | Orders | Late | Late rate |
+|---|---|---:|---:|---:|
+| Train | Jan 2017 – Mar 2018 | 63,332 | 5,097 | 8.0% |
+| Calibration (probabilities + alert threshold) | Apr 2018 | 6,670 | 306 | 4.6% |
+| Test (never used for any choice) | May – Aug 2018 | 24,928 | 1,114 | 4.5% |
+
+The test months are also the months replayed through Kafka.
+
+### What the data shows (EDA)
+
+* **Distance:** the late rate rises from 4.5% on routes under 100 km to 11.6% beyond 1,500 km; cross-state orders are late 8.0% of the time vs 4.5% within a state.
+* **Payment:** boleto (bank slip) payments take a median of about 29 h to be approved vs about 16 min for credit cards.
+* **The signal grows with the stage:** the best purchase-time column alone reaches a ROC-AUC of only 0.58, while hand-over columns reach 0.66. Late orders spend longer with the seller (median 3.5 vs 2.2 days) and much longer in transit (26 vs 7 days). This is why the order is scored again at hand-over.
+* **Drift:** the monthly late rate moves from 2.8% (Jul 2017) to 12.4% (Nov 2017, Black Friday) and 19.0% (Mar 2018), so the split is chronological and rule R8 watches for regional surges live.
+
+Full analysis: `notebooks/olist_delay_eda_model1_top15_colab.ipynb` and `docs/SPA_Dataset_Description_and_EDA_Team10.pdf`. Data-quality notes are in section 13 below.
+
+### Licence
+
+The Olist dataset is published under **CC BY-NC-SA 4.0** (attribution, non-commercial, share-alike). The data files in this repository are derived from it and are shared under the same terms.
+
+---
+
 ## 1. Requirements
 
 * **Docker Desktop** running, with **at least 6 GB memory** (Settings → Resources → Memory).
@@ -181,9 +281,3 @@ docs/              report, synopsis, EDA, literature survey, research paper, arc
 To rebuild the datasets from scratch, create `olist_master_orders.csv` from the 9 Kaggle Olist files (not included) and run `python data_prep/build_datasets.py --master olist_master_orders.csv --out data`.
 
 Offline tests (optional, needs Python with pandas, scikit-learn, pytest): `python -m pytest -q tests`
-
-
-## Data
-
-Brazilian E-Commerce Public Dataset by Olist (Kaggle), licensed CC BY-NC-SA 4.0:
-https://www.kaggle.com/datasets/olistbr/brazilian-e-commerce
