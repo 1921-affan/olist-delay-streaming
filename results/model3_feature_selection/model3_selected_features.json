@@ -1,0 +1,99 @@
+{
+  "model": "model_3",
+  "scored_at": "handed to carrier",
+  "selected_features": [
+    "promise_days",
+    "weight_g",
+    "customer_state",
+    "dist_km",
+    "route_recent_days",
+    "promise_buffer_route",
+    "promise_buffer_state",
+    "handling_days",
+    "seller_overrun_days",
+    "post_approval_days"
+  ],
+  "selected_categorical": [
+    "customer_state"
+  ],
+  "dropped_features": [
+    "purchase_hour",
+    "purchase_weekday",
+    "price",
+    "freight",
+    "n_items",
+    "volume_cm3",
+    "category",
+    "seller_state",
+    "same_state",
+    "pay_type",
+    "installments",
+    "seller_prior_orders",
+    "seller_late_rate_prior",
+    "seller_overrun_rate_prior",
+    "seller_handling_days_prior",
+    "order_load_ratio",
+    "approval_lag_h"
+  ],
+  "selection_rule": "smallest set within 2% of best mean PR-AUC, recursive backward elimination with held-out permutation importance, 4 chronological folds with 1-month embargo",
+  "folds": [
+    [
+      "2017-07-01",
+      "2017-08-01",
+      "2017-10-01"
+    ],
+    [
+      "2017-09-01",
+      "2017-10-01",
+      "2017-12-01"
+    ],
+    [
+      "2017-11-01",
+      "2017-12-01",
+      "2018-02-01"
+    ],
+    [
+      "2018-01-01",
+      "2018-02-01",
+      "2018-04-01"
+    ]
+  ],
+  "xgb_params": {
+    "n_estimators": 600,
+    "max_depth": 2,
+    "learning_rate": 0.03,
+    "min_child_weight": 10,
+    "subsample": 0.9,
+    "colsample_bytree": 0.9,
+    "reg_lambda": 10.0
+  },
+  "weight_multiplier": 0.75,
+  "cv_selected": {
+    "pr_auc": 0.3195878380874151,
+    "pr_auc_std": 0.07704533309248275,
+    "roc_auc": 0.7431122669626258,
+    "recall_top10": 0.35453940393002614
+  },
+  "cv_best": {
+    "n_features": 17,
+    "pr_auc": 0.32551951244644106
+  },
+  "data_split": {
+    "train": [
+      "2017-01-01",
+      "2018-04-01"
+    ],
+    "calibration": [
+      "2018-04-01",
+      "2018-05-01"
+    ],
+    "test_untouched": [
+      "2018-05-01",
+      "2018-09-01"
+    ]
+  },
+  "versions": {
+    "scikit-learn": "1.6.1",
+    "xgboost": "3.4.1"
+  }
+}

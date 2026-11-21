@@ -1,0 +1,171 @@
+{
+  "label": "is_late",
+  "label_definition": "1 if the delivered calendar date is after estimated_delivery_date, else 0",
+  "prediction_unit": "one row per order (single-seller, delivered) for training; replay uses all test-period orders",
+  "stage1_features": [
+    "promise_days",
+    "purchase_hour",
+    "purchase_weekday",
+    "price",
+    "freight",
+    "n_items",
+    "weight_g",
+    "volume_cm3",
+    "category",
+    "customer_state",
+    "seller_state",
+    "same_state",
+    "dist_km",
+    "pay_type",
+    "installments",
+    "seller_prior_orders",
+    "seller_late_rate_prior",
+    "seller_overrun_rate_prior",
+    "seller_handling_days_prior",
+    "route_recent_days",
+    "promise_buffer_route",
+    "promise_buffer_state",
+    "order_load_ratio"
+  ],
+  "stage2_extra_features": [
+    "approval_lag_h"
+  ],
+  "stage3_extra_features": [
+    "handling_days",
+    "seller_overrun_days",
+    "post_approval_days"
+  ],
+  "categorical_features": [
+    "category",
+    "customer_state",
+    "seller_state",
+    "pay_type"
+  ],
+  "models": {
+    "model_1": {
+      "scored_at": "order placed",
+      "features": [
+        "promise_days",
+        "purchase_hour",
+        "purchase_weekday",
+        "price",
+        "freight",
+        "n_items",
+        "weight_g",
+        "volume_cm3",
+        "category",
+        "customer_state",
+        "seller_state",
+        "same_state",
+        "dist_km",
+        "pay_type",
+        "installments",
+        "seller_prior_orders",
+        "seller_late_rate_prior",
+        "seller_overrun_rate_prior",
+        "seller_handling_days_prior",
+        "route_recent_days",
+        "promise_buffer_route",
+        "promise_buffer_state",
+        "order_load_ratio"
+      ]
+    },
+    "model_3": {
+      "scored_at": "handed to carrier",
+      "features": [
+        "promise_days",
+        "purchase_hour",
+        "purchase_weekday",
+        "price",
+        "freight",
+        "n_items",
+        "weight_g",
+        "volume_cm3",
+        "category",
+        "customer_state",
+        "seller_state",
+        "same_state",
+        "dist_km",
+        "pay_type",
+        "installments",
+        "seller_prior_orders",
+        "seller_late_rate_prior",
+        "seller_overrun_rate_prior",
+        "seller_handling_days_prior",
+        "route_recent_days",
+        "promise_buffer_route",
+        "promise_buffer_state",
+        "order_load_ratio",
+        "approval_lag_h",
+        "handling_days",
+        "seller_overrun_days",
+        "post_approval_days"
+      ]
+    }
+  },
+  "feature_groups": {
+    "order_basics": [
+      "promise_days",
+      "purchase_hour",
+      "purchase_weekday",
+      "price",
+      "freight",
+      "n_items",
+      "weight_g",
+      "volume_cm3",
+      "category",
+      "customer_state",
+      "seller_state",
+      "same_state",
+      "dist_km",
+      "pay_type",
+      "installments"
+    ],
+    "seller_history": [
+      "seller_prior_orders",
+      "seller_late_rate_prior",
+      "seller_overrun_rate_prior",
+      "seller_handling_days_prior"
+    ],
+    "route_and_load": [
+      "route_recent_days",
+      "promise_buffer_route",
+      "promise_buffer_state",
+      "order_load_ratio"
+    ]
+  },
+  "approval_stage": "no model: the scorer keeps the Model 1 score and attaches rule R1 (approval_lag_h > 24) as a reason tag",
+  "meta_columns_never_features": [
+    "order_id",
+    "seller_id",
+    "customer_zip_prefix",
+    "purchase_ts",
+    "approved_ts",
+    "carrier_ts",
+    "delivered_ts",
+    "estimated_delivery_date",
+    "shipping_limit_ts",
+    "approved_before_handoff",
+    "split",
+    "is_late"
+  ],
+  "splits": {
+    "train": [
+      "2017-01-01",
+      "2018-01-01"
+    ],
+    "gap": [
+      "2018-01-01",
+      "2018-02-01"
+    ],
+    "valid": [
+      "2018-02-01",
+      "2018-05-01"
+    ],
+    "test": [
+      "2018-05-01",
+      "2018-09-01"
+    ]
+  },
+  "balancing": "done inside the training code (class weights or undersampling of train rows only); files contain only real rows"
+}

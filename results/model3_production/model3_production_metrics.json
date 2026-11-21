@@ -1,0 +1,71 @@
+{
+  "chosen": "XGBoost",
+  "params": {
+    "n_estimators": 600,
+    "max_depth": 2,
+    "learning_rate": 0.03,
+    "min_child_weight": 10,
+    "subsample": 0.9,
+    "colsample_bytree": 0.9,
+    "reg_lambda": 10.0
+  },
+  "features": [
+    "promise_days",
+    "weight_g",
+    "customer_state",
+    "dist_km",
+    "route_recent_days",
+    "promise_buffer_route",
+    "promise_buffer_state",
+    "handling_days",
+    "seller_overrun_days",
+    "post_approval_days"
+  ],
+  "threshold": 0.7364097237586975,
+  "calibration": {
+    "pr_auc": 0.2798469633673393,
+    "roc_auc": 0.8127909030781808
+  },
+  "test": {
+    "pr_auc": 0.29181109380169834,
+    "roc_auc": 0.829228642717144,
+    "base_rate": 0.04468870346598203,
+    "at_threshold": {
+      "threshold": 0.7364097237586975,
+      "alert_rate": 0.07425385109114249,
+      "fpr": 0.058914923994289076,
+      "precision": 0.24203133441383037,
+      "recall": 0.4021543985637343,
+      "f1": 0.3021922428330523,
+      "TP": 448,
+      "FP": 1403,
+      "TN": 22411,
+      "FN": 666
+    },
+    "top5": {
+      "alerts": 1246,
+      "TP": 349,
+      "precision": 0.28009630818619585,
+      "recall": 0.3132854578096948
+    },
+    "top10": {
+      "alerts": 2492,
+      "TP": 516,
+      "precision": 0.20706260032102727,
+      "recall": 0.4631956912028725
+    },
+    "top20": {
+      "alerts": 4985,
+      "TP": 734,
+      "precision": 0.14724172517552658,
+      "recall": 0.6588868940754039
+    },
+    "mean_calibrated_prob": 0.031113386154174805
+  },
+  "versions": {
+    "scikit-learn": "1.6.1",
+    "xgboost": "3.4.1",
+    "lightgbm": "4.6.0",
+    "catboost": "1.2.10"
+  }
+}

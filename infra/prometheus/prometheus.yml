@@ -1,0 +1,28 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: producer
+    static_configs:
+      - targets: ["producer:8000"]          # only up while a replay runs
+
+  - job_name: scorer
+    static_configs:
+      - targets: ["scorer-1:8000", "scorer-2:8000", "scorer-3:8000"]
+
+  - job_name: db-writer
+    static_configs:
+      - targets: ["db-writer:8000"]
+
+  - job_name: window-aggregator
+    static_configs:
+      - targets: ["window-aggregator:8000"]
+
+  - job_name: kafka
+    static_configs:
+      - targets: ["kafka-exporter:9308"]    # consumer lag, partitions, offsets
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

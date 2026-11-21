@@ -1,0 +1,10 @@
+# One image for all our services. Model versions MUST match training (Colab):
+scikit-learn==1.6.1
+xgboost==3.4.1
+joblib==1.4.2
+# Data / streaming / storage / monitoring
+pandas==2.2.3
+numpy==2.1.3
+confluent-kafka==2.6.1
+psycopg[binary]==3.2.3
+prometheus-client==0.21.0

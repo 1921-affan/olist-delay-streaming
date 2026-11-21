@@ -1,0 +1,178 @@
+name: olist-delay-streaming
+
+# Shared settings for our Python services (one image, different commands).
+# Only kafka-init builds the image; every other service reuses it (avoids a build race).
+x-app: &app
+  image: olist-delay-app:latest
+  pull_policy: never
+  env_file: .env
+  volumes:
+    - ./data:/app/data:ro
+    - ./models:/app/models:ro
+  restart: unless-stopped
+  depends_on:
+    kafka-init:
+      condition: service_completed_successfully
+    postgres:
+      condition: service_healthy
+
+services:
+  # ------------------------------------------------------------------ Kafka (KRaft, single broker)
+  kafka:
+    image: apache/kafka:3.9.0
+    hostname: kafka
+    ports:
+      - "9094:9094"            # laptop access: localhost:9094 (9092 left free for your local Kafka)
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_NUM_PARTITIONS: 3
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  # Creates the 4 topics, prints their partitions, then exits.
+  kafka-init:
+    build: .
+    image: olist-delay-app:latest
+    env_file: .env
+    command: ["python", "infra/kafka/create_topics.py"]
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: "no"
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:v0.7.2
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: olist
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ------------------------------------------------------------------ Storage
+  postgres:
+    image: postgres:16
+    ports:
+      - "5433:5432"            # laptop access: localhost:5433 (5432 left free for a local PostgreSQL)
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  # ------------------------------------------------------------------ Our services
+  # Replay producer: not started by `docker compose up`. Run it with:
+  #   docker compose run --rm --name producer producer                      (settings from .env)
+  #   docker compose run --rm --name producer producer --start 2018-06-01 --speed 2880
+  producer:
+    <<: *app
+    entrypoint: ["python", "producer/producer.py"]
+    environment:
+      INSTANCE_NAME: producer
+    volumes:
+      - ./data:/app/data:ro
+      - producer-state:/app/state
+    restart: "no"
+    profiles: ["replay"]
+
+  # 3 scorer copies in ONE consumer group ("scorer") -> partitions are shared between them.
+  scorer-1:
+    <<: *app
+    command: ["python", "scorer/scorer.py"]
+    environment:
+      INSTANCE_NAME: scorer-1
+  scorer-2:
+    <<: *app
+    command: ["python", "scorer/scorer.py"]
+    environment:
+      INSTANCE_NAME: scorer-2
+  scorer-3:
+    <<: *app
+    command: ["python", "scorer/scorer.py"]
+    environment:
+      INSTANCE_NAME: scorer-3
+
+  db-writer:
+    <<: *app
+    command: ["python", "db_writer/db_writer.py"]
+    environment:
+      INSTANCE_NAME: db-writer
+
+  window-aggregator:
+    <<: *app
+    command: ["python", "window_aggregator/aggregator.py"]
+    environment:
+      INSTANCE_NAME: window-aggregator
+
+  # ------------------------------------------------------------------ Monitoring
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:v1.7.0
+    command: ["--kafka.server=kafka:9092"]
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/business.json
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - postgres
+    restart: unless-stopped
+
+volumes:
+  kafka-data:
+  pg-data:
+  grafana-data:
+  producer-state:

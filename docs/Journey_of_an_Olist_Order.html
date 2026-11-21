@@ -1,0 +1,511 @@
+<title>Journey of an Olist Order</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: case tabs + controls, the pipeline diagram full width, then step list beside step detail, then glossary. */
+:root{
+  --bg:#F3F4F1; --panel:#FFFFFF; --ink:#1B2128; --muted:#5B636B; --line:#CDD2D4;
+  --accent:#1D5FA8; --accent-soft:#DCE8F5;
+  --kafka:#6B4FBB; --kafka-soft:#ECE7F8;
+  --svc:#0F7B6C; --svc-soft:#E0F1EE;
+  --store:#8A5A12; --store-soft:#F5ECDD;
+  --view:#B24A1B; --view-soft:#F8E6DD;
+  --src:#5A6670; --src-soft:#E7EAEC;
+  --high:#C93535; --medium:#D9800F; --none:#2E8B57; --rej:#6B7280;
+  --code-bg:#EEF0F1;
+  --font:"Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#12171C; --panel:#1A2128; --ink:#E6EAED; --muted:#9AA4AC; --line:#2F3A43;
+  --accent:#6FA8E8; --accent-soft:#1C2E44;
+  --kafka:#A992F0; --kafka-soft:#2A2343;
+  --svc:#4CC3B2; --svc-soft:#163632;
+  --store:#E0B064; --store-soft:#3A2E1A;
+  --view:#F08A5D; --view-soft:#3E2419;
+  --src:#A3B1B8; --src-soft:#26313A;
+  --high:#F06262; --medium:#F2A43B; --none:#4CC57C; --rej:#9CA3AF;
+  --code-bg:#11181E; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12171C; --panel:#1A2128; --ink:#E6EAED; --muted:#9AA4AC; --line:#2F3A43;
+  --accent:#6FA8E8; --accent-soft:#1C2E44;
+  --kafka:#A992F0; --kafka-soft:#2A2343;
+  --svc:#4CC3B2; --svc-soft:#163632;
+  --store:#E0B064; --store-soft:#3A2E1A;
+  --view:#F08A5D; --view-soft:#3E2419;
+  --src:#A3B1B8; --src-soft:#26313A;
+  --high:#F06262; --medium:#F2A43B; --none:#4CC57C; --rej:#9CA3AF;
+  --code-bg:#11181E; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.5;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 40px}
+.wrap{max-width:1320px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+header{display:flex;flex-direction:column;gap:4px}
+header .eyebrow{font-family:var(--mono);font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+header h1{font-size:1.65rem;margin:0;font-weight:700;letter-spacing:-.01em;text-wrap:balance}
+header p{margin:0;color:var(--muted);max-width:80ch}
+code{font-family:var(--mono);font-size:.88em}
+.bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+.tabs{display:flex;flex-wrap:wrap;gap:6px}
+.tab{font:inherit;font-size:.9rem;border:1px solid var(--line);background:var(--panel);color:var(--ink);
+  padding:7px 12px;border-radius:999px;cursor:pointer;display:flex;gap:8px;align-items:center}
+.tab .dot{width:10px;height:10px;border-radius:50%}
+.tab[aria-selected="true"]{border-color:var(--accent);background:var(--accent-soft);font-weight:600}
+.ctrls{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.btn{font:inherit;font-size:.9rem;border:1px solid var(--line);background:var(--panel);color:var(--ink);
+  padding:7px 12px;border-radius:8px;cursor:pointer;min-width:40px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--bg);font-weight:600}
+.btn:focus-visible,.tab:focus-visible,.step:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.counter{font-family:var(--mono);font-size:.85rem;color:var(--muted);min-width:70px;text-align:center}
+.stage{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow-x:auto}
+.stage > svg{display:block;width:100%;min-width:980px;height:auto}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:.8rem;color:var(--muted);padding:8px 14px;border-top:1px solid var(--line);min-width:980px}
+.legend span{display:flex;align-items:center;gap:6px}
+.legend i{width:14px;height:10px;border-radius:2px;display:inline-block;border:1.5px solid}
+.lower{display:grid;grid-template-columns:minmax(0,340px) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:820px){.lower{grid-template-columns:minmax(0,1fr)}}
+.steps{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px;display:flex;flex-direction:column;gap:2px;margin:0;list-style:none}
+.step{display:grid;grid-template-columns:28px 1fr;gap:8px;align-items:start;padding:7px 8px;border-radius:8px;cursor:pointer;
+  font-size:.9rem;color:var(--muted);border:1px solid transparent;background:none;text-align:left;font-family:inherit;width:100%}
+.step b{font-family:var(--mono);font-weight:500;font-size:.8rem;color:var(--muted);padding-top:2px}
+.step .ev{display:block;font-family:var(--mono);font-size:.72rem;color:var(--muted);letter-spacing:.02em}
+.step[aria-current="step"]{background:var(--accent-soft);color:var(--ink);border-color:var(--accent)}
+.step[aria-current="step"] b{color:var(--accent)}
+.step.done{color:var(--ink)}
+.detail{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.detail .eyebrow{font-family:var(--mono);font-size:.78rem;letter-spacing:.04em;text-transform:uppercase;color:var(--accent);display:flex;gap:14px;flex-wrap:wrap}
+.detail .eyebrow .time{color:var(--muted)}
+.detail h2{margin:0;font-size:1.3rem;text-wrap:balance}
+.detail .what{margin:0;max-width:74ch}
+.detail ul{margin:0;padding-left:20px;max-width:74ch}
+.detail li{margin:2px 0}
+.kv{display:grid;grid-template-columns:minmax(0,max-content) minmax(0,1fr);gap:4px 14px;font-size:.88rem;background:var(--code-bg);border-radius:8px;padding:10px 12px;margin:0}
+.kv dt{font-family:var(--mono);color:var(--muted)}
+.kv dd{margin:0;font-family:var(--mono);overflow-wrap:anywhere}
+.label{font-size:.78rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:-6px}
+pre.msg{margin:0;background:var(--code-bg);border-radius:8px;padding:10px 12px;font-family:var(--mono);font-size:.8rem;line-height:1.45;overflow-x:auto;white-space:pre}
+.see{border-left:3px solid var(--view);padding:6px 12px;background:var(--view-soft);border-radius:0 8px 8px 0;font-size:.9rem}
+.see strong{color:var(--view)}
+.sev{display:inline-block;padding:0 8px;border-radius:4px;font-weight:600;font-family:var(--mono);font-size:.82rem;color:var(--panel)}
+.sev.HIGH{background:var(--high)} .sev.NONE{background:var(--none)} .sev.REJ{background:var(--rej)} .sev.MED{background:var(--medium)}
+.glossary{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 18px}
+.glossary h3{margin:0 0 8px;font-size:1rem}
+.glossary dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:8px 22px;margin:0;font-size:.88rem}
+.glossary dt{font-weight:600}
+.glossary dd{margin:0;color:var(--muted)}
+kbd{font-family:var(--mono);font-size:.78rem;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 5px}
+
+/* SVG */
+.node rect.box{stroke-width:1.5;transition:filter .3s,stroke-width .3s}
+.node text{font-family:var(--font);fill:var(--ink)}
+.node .t1{font-size:13px;font-weight:600}
+.node .t2{font-size:10px;fill:var(--muted);font-family:var(--mono)}
+.node.src rect.box{fill:var(--src-soft);stroke:var(--src)}
+.node.svc rect.box{fill:var(--svc-soft);stroke:var(--svc)}
+.node.kafka rect.box{fill:var(--kafka-soft);stroke:var(--kafka)}
+.node.store rect.box{fill:var(--store-soft);stroke:var(--store)}
+.node.view rect.box{fill:var(--view-soft);stroke:var(--view)}
+.node.group > rect.box{fill:none;stroke-dasharray:5 4}
+.node.on rect.box{stroke-width:3.2;filter:drop-shadow(0 0 6px var(--accent))}
+.edge{fill:none;stroke:var(--line);stroke-width:1.6}
+.edge.on{stroke:var(--accent);stroke-width:2.4}
+.edge.dash{stroke-dasharray:5 5}
+.gtitle{font-size:11px;font-family:var(--mono);fill:var(--muted);letter-spacing:.04em}
+.packet text{font-family:var(--mono);font-size:10.5px;font-weight:600;fill:var(--ink);paint-order:stroke;stroke:var(--panel);stroke-width:3px}
+.packet circle{stroke:var(--panel);stroke-width:2}
+.tmp{fill:none;stroke:var(--accent);stroke-width:1.6;stroke-dasharray:3 4;opacity:.8}
+@media (prefers-reduced-motion:reduce){.node rect.box{transition:none}}
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow">Real-time supply chain delay prediction · live replay</span>
+    <h1>Journey of an Olist order</h1>
+    <p>Follow real orders from <code>orders_stream.csv</code> and <code>shipment_events_enriched.csv</code> through the running system: replay producer, Kafka, the three scorers, DB writer, window aggregator, PostgreSQL, Prometheus and Grafana. Times are for the live demo replay (<code>--start 2018-07-20</code>, 1 simulated day = 1 real minute). Pick a case, then press <b>Next</b> (or the <kbd>→</kbd> key).</p>
+  </header>
+
+  <div class="bar">
+    <div class="tabs" role="tablist" aria-label="Choose an order">
+      <button class="tab" role="tab" id="tab-high" data-s="high"><span class="dot" style="background:var(--high)"></span>Late order caught · Brasília (HIGH)</button>
+      <button class="tab" role="tab" id="tab-none" data-s="none"><span class="dot" style="background:var(--none)"></span>On-time order · Minas Gerais (no alert)</button>
+      <button class="tab" role="tab" id="tab-rej" data-s="rej"><span class="dot" style="background:var(--rej)"></span>Broken message (rejected)</button>
+    </div>
+    <div class="ctrls">
+      <button class="btn" id="b-restart" title="Back to step 1">⟲</button>
+      <button class="btn" id="b-prev" title="Previous step (←)">◀</button>
+      <span class="counter" id="counter">1 / 13</span>
+      <button class="btn primary" id="b-next" title="Next step (→)">Next ▶</button>
+      <button class="btn" id="b-play" title="Play all steps automatically">Auto-play</button>
+    </div>
+  </div>
+
+  <div class="stage">
+    <svg id="svg" viewBox="0 72 1280 478" role="img" aria-label="Pipeline diagram with the moving order event"></svg>
+    <div class="legend">
+      <span><i style="background:var(--src-soft);border-color:var(--src)"></i>Data file</span>
+      <span><i style="background:var(--svc-soft);border-color:var(--svc)"></i>Our Python service (Docker container)</span>
+      <span><i style="background:var(--kafka-soft);border-color:var(--kafka)"></i>Kafka topic (P0–P2 = partitions)</span>
+      <span><i style="background:var(--store-soft);border-color:var(--store)"></i>PostgreSQL table</span>
+      <span><i style="background:var(--view-soft);border-color:var(--view)"></i>Grafana dashboard</span>
+      <span><svg width="26" height="10" aria-hidden="true"><line x1="0" y1="5" x2="26" y2="5" stroke="currentColor" stroke-dasharray="4 4"/></svg>metrics path</span>
+    </div>
+  </div>
+
+  <div class="lower">
+    <ol class="steps" id="steps" aria-label="Steps"></ol>
+    <section class="detail" id="detail" aria-live="polite"></section>
+  </div>
+
+  <section class="glossary">
+    <h3>Words used on this page</h3>
+    <dl>
+      <div><dt>Topic</dt><dd>A named stream of messages in Kafka. We use 4: orders, shipment-events, delay-predictions and alerts.</dd></div>
+      <div><dt>Partition (P0, P1, P2)</dt><dd>A topic is split into lanes so three scorer copies can work in parallel. The alerts topic has one partition.</dd></div>
+      <div><dt>Key</dt><dd>The order_id sent with each message. CRC32(key) mod 3 picks the partition, so all four events of an order use the same partition number and stay in order.</dd></div>
+      <div><dt>Offset · commit</dt><dd>A message's position in its partition. Commit = save "finished up to here". We commit only after the results are safely stored.</dd></div>
+      <div><dt>Consumer group</dt><dd>Copies of a service sharing topics; each partition is read by exactly one copy. The range assignor gives one copy the same partition number of both input topics.</dd></div>
+      <div><dt>Raw score · P(late)</dt><dd>Raw score is the XGBoost output and is compared with the threshold (Model 1: 0.7493, Model 3: 0.7364). P(late) is the calibrated probability shown on dashboards.</dd></div>
+      <div><dt>Severity</dt><dd>HIGH = model alert at handoff, or model alert + R2 · MEDIUM = Model 1 alert alone, or R2 alone · no alert otherwise. R8 surge alerts are HIGH.</dd></div>
+      <div><dt>Rules R1–R9</dt><dd>R1 slow approval, R2 missed shipping deadline, R5 tight promise, R6 long route, R7 unreliable seller (scorer); R8 region surge (aggregator); R9 = model alert. R3/R4 need a timer.</dd></div>
+      <div><dt>Idempotent write</dt><dd>Primary keys with ON CONFLICT: a re-delivered message cannot create a second row.</dd></div>
+      <div><dt>Tumbling window</dt><dd>One simulated day per customer state and per seller, by event time (when it happened in 2018), not arrival time.</dd></div>
+      <div><dt>Watermark</dt><dd>Newest event time seen − 6 h grace. A day window closes when the watermark passes its end; events up to 7 days late still update it.</dd></div>
+      <div><dt>rejected_events</dt><dd>Table where broken messages are kept with the reason, topic, partition and offset, so the stream never stops for a bad message.</dd></div>
+    </dl>
+  </section>
+</div>
+
+<script>
+(function(){
+const NS="http://www.w3.org/2000/svg";
+const svg=document.getElementById("svg");
+const reduce=window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// ---------- geometry ----------
+const koY=p=>142+40*p, ksY=p=>306+40*p, scY=p=>158+105*p, dpY=p=>138+30*p;
+const T={predictions:121,order_status:165,alerts:209,state_daily_windows:253,seller_daily_windows:297,aggregator_state:341,replay_runs:385,rejected_events:429};
+
+// [id, class, x, y, w, h, title, subtitle lines]
+const NODES=[
+ ["data","src",16,200,128,120,"Replay files",["2 CSV files","39,147 events","from 20 Jul 2018"]],
+ ["prod","svc",176,200,128,120,"Replay producer",["simulated clock","speed 1440×","key = order_id"]],
+ ["ko","kafka group",336,116,128,140,"",[]],
+ ["ko0","kafka",346,126,108,32,"P0",[]],["ko1","kafka",346,166,108,32,"P1",[]],["ko2","kafka",346,206,108,32,"P2",[]],
+ ["ks","kafka group",336,280,128,140,"",[]],
+ ["ks0","kafka",346,290,108,32,"P0",[]],["ks1","kafka",346,330,108,32,"P1",[]],["ks2","kafka",346,370,108,32,"P2",[]],
+ ["scg","svc group",488,116,152,304,"",[]],
+ ["sc0","svc",498,130,132,56,"scorer copy",["owns P0 of both"]],["sc1","svc",498,235,132,56,"scorer copy",["owns P1 of both"]],["sc2","svc",498,340,132,56,"scorer copy",["owns P2 of both"]],
+ ["dp","kafka group",664,116,128,112,"",[]],
+ ["dp0","kafka",672,126,112,24,"P0",[]],["dp1","kafka",672,156,112,24,"P1",[]],["dp2","kafka",672,186,112,24,"P2",[]],
+ ["al","kafka",664,244,128,44,"alerts",["1 partition"]],
+ ["exp","svc",664,462,128,40,"kafka-exporter",["offsets, lag"]],
+ ["dbw","svc",824,116,128,160,"DB writer",["batch ≤ 500 / 1 s","insert, then commit"]],
+ ["agg","svc",824,300,128,96,"Window aggregator",["1-day windows, R8","state + offsets","in 1 transaction"]],
+ ["pg","store group",984,90,128,372,"",[]],
+ ["t_pr","store",992,104,112,34,"predictions",[]],["t_os","store",992,148,112,34,"order_status",[]],
+ ["t_al","store",992,192,112,34,"alerts",[]],["t_sw","store",992,236,112,34,"state_daily_windows",[]],
+ ["t_se","store",992,280,112,34,"seller_daily_windows",[]],["t_as","store",992,324,112,34,"aggregator_state",[]],
+ ["t_rr","store",992,368,112,34,"replay_runs",[]],["t_rj","store",992,412,112,34,"rejected_events",[]],
+ ["gf","view group",1144,90,120,230,"",[]],
+ ["g_bz","view",1152,110,104,90,"Business view",["14 panels"]],["g_sy","view",1152,215,104,90,"System view",["12 panels"]],
+ ["prom","svc",1144,420,120,50,"Prometheus",["scrapes every 5 s"]],
+];
+const GT=[[400,108,"orders"],[400,272,"shipment-events"],[564,108,"consumer group: scorer"],[728,108,"delay-predictions"],[1048,82,"PostgreSQL 16"],[1204,82,"Grafana"],[400,436,"Kafka broker (KRaft)"]];
+const EDGES=[
+ ["e_dp",[[144,260],[176,260]]],
+ ["e_o0",[[304,240],[322,240],[322,koY(0)],[346,koY(0)]]],["e_o1",[[304,240],[322,240],[322,koY(1)],[346,koY(1)]]],["e_o2",[[304,240],[322,240],[322,koY(2)],[346,koY(2)]]],
+ ["e_s0",[[304,280],[326,280],[326,ksY(0)],[346,ksY(0)]]],["e_s1",[[304,280],[326,280],[326,ksY(1)],[346,ksY(1)]]],["e_s2",[[304,280],[326,280],[326,ksY(2)],[346,ksY(2)]]],
+ ["e_os0",[[454,koY(0)],[468,koY(0)],[468,scY(0)-8],[498,scY(0)-8]]],["e_os1",[[454,koY(1)],[474,koY(1)],[474,scY(1)-8],[498,scY(1)-8]]],["e_os2",[[454,koY(2)],[480,koY(2)],[480,scY(2)-8],[498,scY(2)-8]]],
+ ["e_ss0",[[454,ksY(0)],[471,ksY(0)],[471,scY(0)+8],[498,scY(0)+8]]],["e_ss1",[[454,ksY(1)],[477,ksY(1)],[477,scY(1)+8],[498,scY(1)+8]]],["e_ss2",[[454,ksY(2)],[483,ksY(2)],[483,scY(2)+8],[498,scY(2)+8]]],
+ ["e_b0",[[630,scY(0)],[648,scY(0)]]],["e_b1",[[630,scY(1)],[648,scY(1)]]],["e_b2",[[630,scY(2)],[648,scY(2)]]],
+ ["e_bv",[[648,dpY(0)],[648,scY(2)]]],
+ ["e_t0",[[648,dpY(0)],[672,dpY(0)]]],["e_t1",[[648,dpY(1)],[672,dpY(1)]]],["e_t2",[[648,dpY(2)],[672,dpY(2)]]],
+ ["e_ta",[[648,266],[664,266]]],
+ ["e_pb",[[784,dpY(0)],[800,dpY(0)],[800,dpY(2)],[784,dpY(2)]]],["e_pb1",[[784,dpY(1)],[800,dpY(1)]]],
+ ["e_pd",[[800,168],[824,168]]],
+ ["e_ad",[[792,262],[824,262]]],
+ ["e_pa",[[800,dpY(2)],[800,232],[812,232],[812,322],[824,322]]],
+ ["e_r8",[[824,372],[806,372],[806,280],[792,280]]],
+ ["e_dbh",[[952,196],[966,196]]],["e_dbv",[[966,T.predictions],[966,T.alerts]]],
+ ["e_d1",[[966,T.predictions],[992,T.predictions]]],["e_d2",[[966,T.order_status],[992,T.order_status]]],["e_d3",[[966,T.alerts],[992,T.alerts]]],
+ ["e_agh",[[952,348],[974,348]]],["e_agv",[[974,T.state_daily_windows],[974,T.aggregator_state]]],
+ ["e_a1",[[974,T.state_daily_windows],[992,T.state_daily_windows]]],["e_a2",[[974,T.seller_daily_windows],[992,T.seller_daily_windows]]],["e_a3",[[974,T.aggregator_state],[992,T.aggregator_state]]],
+ ["e_rj",[[564,420],[564,512],[1048,512],[1048,446]]],
+ ["e_pgb",[[1104,T.alerts],[1128,T.alerts],[1128,155],[1152,155]]],
+ ["e_exk",[[728,462],[728,288]],true],["e_exp",[[792,482],[1132,482],[1132,445],[1144,445]],true],
+ ["e_prs",[[1204,420],[1204,305]]],
+];
+function el(tag,attrs,parent){const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);(parent||svg).appendChild(e);return e}
+const defs=el("defs",{});
+const mk=el("marker",{id:"arr",viewBox:"0 0 10 10",refX:"9",refY:"5",markerWidth:"6",markerHeight:"6",orient:"auto-start-reverse"},defs);
+el("path",{d:"M0,0 L10,5 L0,10 z",fill:"var(--line)"},mk);
+const mk2=el("marker",{id:"arr2",viewBox:"0 0 10 10",refX:"9",refY:"5",markerWidth:"6",markerHeight:"6",orient:"auto-start-reverse"},defs);
+el("path",{d:"M0,0 L10,5 L0,10 z",fill:"var(--accent)"},mk2);
+const gEdges=el("g",{}),gNodes=el("g",{}),gTmp=el("g",{}),gPk=el("g",{});
+const NOARROW=new Set(["e_b0","e_b1","e_b2","e_bv","e_pb","e_pb1","e_dbh","e_dbv","e_agh","e_agv"]);
+const edgeEl={};
+EDGES.forEach(([id,pts,d])=>{const p=el("polyline",{points:pts.map(q=>q.join(",")).join(" "),class:"edge"+(d?" dash":"")},gEdges);
+  if(!NOARROW.has(id))p.setAttribute("marker-end","url(#arr)");edgeEl[id]=p});
+const nodeEl={};
+NODES.forEach(([id,cls,x,y,w,h,t,sub])=>{
+  const g=el("g",{class:"node "+cls,id:"n-"+id},gNodes);
+  el("rect",{class:"box",x,y,width:w,height:h,rx:cls.includes("group")?10:7},g);
+  if(t){const small=h<=56;const ty=small?(sub.length?y+(h<=44?18:24):y+h/2+4):y+24;
+    const tt=el("text",{class:"t1",x:x+w/2,y:ty,"text-anchor":"middle"},g);tt.textContent=t;
+    if(t.length>16)tt.setAttribute("style","font-size:11px");
+    sub.forEach((s,i)=>{const st=el("text",{class:"t2",x:x+w/2,y:small?ty+15+i*14:y+46+i*16,"text-anchor":"middle"},g);st.textContent=s});}
+  nodeEl[id]=g;});
+GT.forEach(([x,y,t])=>{const e=el("text",{class:"gtitle",x,y,"text-anchor":"middle"},gNodes);e.textContent=t});
+
+// ---------- packets ----------
+function len(a,b){return Math.hypot(b[0]-a[0],b[1]-a[1])}
+function pointAt(pts,d){for(let i=1;i<pts.length;i++){const l=len(pts[i-1],pts[i]);if(d<=l){const f=l?d/l:0;return[pts[i-1][0]+(pts[i][0]-pts[i-1][0])*f,pts[i-1][1]+(pts[i][1]-pts[i-1][1])*f]}d-=l}return pts[pts.length-1]}
+function total(pts){let s=0;for(let i=1;i<pts.length;i++)s+=len(pts[i-1],pts[i]);return s}
+let anim=null;
+function drawPackets(list,animate){
+  gPk.innerHTML="";gTmp.innerHTML="";if(anim)cancelAnimationFrame(anim);
+  const items=list.map(pk=>{
+    if(pk.tmp)el("polyline",{points:pk.path.map(q=>q.join(",")).join(" "),class:"tmp"},gTmp);
+    const g=el("g",{class:"packet"},gPk);
+    el("circle",{r:pk.r||8,fill:pk.color||"var(--accent)"},g);
+    const t=el("text",{x:0,y:-13,"text-anchor":"middle"},g);t.textContent=pk.label||"";
+    return{pk,g,L:total(pk.path)}});
+  const place=(it,d)=>{const [x,y]=pointAt(it.pk.path,d);it.g.setAttribute("transform",`translate(${x},${y})`)};
+  if(!animate||reduce){items.forEach(it=>place(it,it.L));return Promise.resolve()}
+  return new Promise(res=>{const start=performance.now();const speed=0.42;
+    const maxL=Math.max(...items.map(i=>i.L+(i.pk.delay||0)*speed),1);
+    function frame(now){const t=(now-start)*speed;items.forEach(it=>place(it,Math.max(0,Math.min(it.L,t-(it.pk.delay||0)*speed))));
+      if(t<maxL)anim=requestAnimationFrame(frame);else res()}
+    items.forEach(it=>place(it,0));anim=requestAnimationFrame(frame)});
+}
+
+// ---------- paths ----------
+const C={high:"var(--high)",none:"var(--none)",rej:"var(--rej)",pred:"var(--kafka)",win:"var(--store)"};
+const P={data:[80,260],prod:[240,260]};
+const toOrders=p=>[[240,260],[240,240],[322,240],[322,koY(p)],[400,koY(p)]];
+const toShip=p=>[[240,260],[240,280],[326,280],[326,ksY(p)],[400,ksY(p)]];
+const xo=[468,474,480],xs=[471,477,483];
+const ordToSc=p=>[[400,koY(p)],[xo[p],koY(p)],[xo[p],scY(p)-8],[564,scY(p)-8]];
+const shipToSc=p=>[[400,ksY(p)],[xs[p],ksY(p)],[xs[p],scY(p)+8],[564,scY(p)+8]];
+const toPred=p=>[[564,scY(p)],[648,scY(p)],[648,dpY(p)],[728,dpY(p)]];
+const toAlerts=p=>[[564,scY(p)],[648,scY(p)],[648,266],[728,266]];
+const predToDb=(p,row)=>[[728,dpY(p)],[800,dpY(p)],[800,168],[888,168],[888,196],[966,196],[966,row],[1048,row]];
+const alertToDb=()=>[[728,266],[888,266],[888,196],[966,196],[966,T.alerts],[1048,T.alerts]];
+const predToAgg=p=>[[728,dpY(p)],[800,dpY(p)],[800,232],[812,232],[812,322],[888,322]];
+const aggToPg=row=>[[888,348],[974,348],[974,row],[1048,row]];
+const pgToBiz=row=>[[1048,row],[1128,row],[1128,155],[1204,155]];
+const scCenter=p=>[[564,scY(p)]];
+const metrics=(xs0)=>xs0.map((pt,i)=>({path:[pt,[pt[0],532],[1204,532],[1204,470]],label:"",color:C.pred,r:5,tmp:true,delay:i*25}));
+
+const S={};
+// ===== HIGH: b77c7b22… DF =====
+const A="b77c7b22…f97415";
+S.high={color:C.high,steps:[
+ {t:"The order in the replay files",ev:"order facts",sim:"23 Jul 2018 10:53",time:"before the replay",nodes:["data"],edges:[],
+  pk:()=>[{path:[P.data],label:"b77c7b22…",color:C.high}],
+  what:"A real Olist order. The producer will send it as four events, one per stage, each carrying only what was known at that moment.",
+  kv:[["order_id","b77c7b2203310a5160f61121eaf97415"],["placed","2018-07-23 10:53:28 (Monday)"],["route","seller in SP → customer in DF (Brasília), 837 km"],["item","baby category · R$ 45.00 + R$ 15.42 freight · 400 g"],["promised delivery","2018-08-13 (20.5 days after purchase)"],["seller's shipping limit","2018-07-31 13:24"],["real outcome","delivered 2018-08-20, 7 days late (kept only for checking; the models never see it)"]],
+  see:"Nothing yet. The two CSV files sit in the project's data folder."},
+ {t:"Producer sends order_placed",ev:"order_placed",sim:"23 Jul 10:53:28",time:"207.2 s after the live replay starts",nodes:["data","prod"],edges:["e_dp"],
+  pk:()=>[{path:[P.data,P.prod],label:"order_placed",color:C.high}],
+  what:"The producer merges both files into one timeline sorted by event time and keeps a simulated clock. At speed 1440, one real second is 24 simulated minutes. The live run starts at 20 Jul 00:00, so 23 Jul 10:53:28 is reached after 207.2 s, and only then is the event sent as JSON.",
+  msg:`{"event_id": "5f8bb8a6e980d321", "event_type": "order_placed",
+ "event_time": "2018-07-23T10:53:28", "order_id": "b77c7b2203310a5160f61121eaf97415",
+ "customer_state": "DF", "seller_state": "SP", "dist_km": 837.1,
+ "promise_days": 20.55, "category": "baby", "price": 45.0, "freight": 15.42,
+ "seller_prior_orders": 6, "seller_late_rate_prior": 0.231,
+ "promise_buffer_route": 9.04, "order_load_ratio": 1.35, ...}`,
+  see:"System view → <b>Events sent by the producer (per second)</b> and <b>Replay progress and simulated clock</b>."},
+ {t:"Kafka stores it in orders P1",ev:"order_placed",sim:"23 Jul 10:53:28",time:"t ≈ 0.02 s",nodes:["prod","ko1"],edges:["e_o1"],
+  pk:()=>[{path:toOrders(1),label:"key = order_id",color:C.high}],
+  what:"The message key is the order_id. CRC32(\"b77c7b22…\") mod 3 = 1, so it goes to partition P1 of orders. The later events of this order use the same key, so they land in P1 of shipment-events and stay in order.",
+  list:["acks = all: the producer waits until Kafka confirms the write.","Idempotent producer: a retry cannot store the message twice.","Messages are batched (linger 20 ms) and lz4-compressed."],
+  see:"Kafka UI (port 8080) → topic <b>orders</b> → partition 1."},
+ {t:"Model 1 scores it at checkout",ev:"order_placed",sim:"23 Jul 10:53:28",time:"≈ 0.2 s",nodes:["ko1","sc1"],edges:["e_os1"],
+  pk:()=>[{path:ordToSc(1),label:"raw 0.380",color:C.none}],
+  what:"The scorer copy that owns P1 reads a batch (up to 500 messages), validates each one and scores the order with Model 1 (XGBoost, 12 checkout-time columns). Rules R5, R6 and R7 are checked as well.",
+  kv:[["Model 1 raw score","0.380 < threshold 0.7493 → no alert"],["calibrated P(late)","0.020 (2%)"],["R5 tight promise","no: 20.5 days > 10"],["R6 long route","no: 837 km ≤ 1,000"],["R7 unreliable seller","no: 23% late before, but only 6 earlier orders (< 20)"],["severity",'<span class="sev NONE">NO ALERT</span>']],
+  see:"Business view → <b>Live risk</b> table (low risk for now)."},
+ {t:"Prediction stored and counted",ev:"order_placed",sim:"23 Jul 10:53:28",time:"send → published p95 ≈ 0.8–1 s",nodes:["sc1","dp1","dbw","agg","t_pr","t_os"],edges:["e_b1","e_bv","e_t1","e_pb1","e_pd","e_dbh","e_dbv","e_d1","e_d2","e_pa"],
+  pk:()=>[{path:toPred(1),label:"prediction",color:C.pred},{path:predToDb(1,T.predictions),label:"",color:C.pred,delay:120},{path:predToDb(1,T.order_status),label:"",color:C.pred,delay:170},{path:predToAgg(1),label:"",color:C.win,delay:220}],
+  what:"The scorer publishes the prediction to delay-predictions (same key, so P1) and commits its input offset only after Kafka confirms. The DB writer and the window aggregator each read it in their own consumer group.",
+  list:["predictions: row (order_id, 'placed'); the primary key makes a repeat harmless.","order_status: current_stage = placed, m1_probability = 0.020.","DF window for 23 Jul: orders_placed + 1 and the average Model 1 probability."],
+  see:"Business view → <b>Orders placed</b> and <b>Orders by current stage</b>."},
+ {t:"Payment approved",ev:"order_approved",sim:"23 Jul 13:31:03",time:"213.8 s",nodes:["prod","ks1","sc1","dp1"],edges:["e_s1","e_ss1","e_b1","e_bv","e_t1"],
+  pk:()=>[{path:toShip(1),label:"order_approved",color:C.high},{path:shipToSc(1),label:"",color:C.high,delay:200},{path:toPred(1),label:"",color:C.pred,delay:420}],
+  what:"The approval goes to shipment-events P1. The range assignor gives the same copy P1 of both input topics, so this order's events are all handled by one scorer copy. There is no model at this stage; rule R1 is checked.",
+  kv:[["approval_lag_h","2.6 hours"],["R1 slow approval","no: 2.6 h ≤ 24 h"],["stored","predictions (order, 'approved'); order_status → approved"]],
+  see:"Business view → <b>Orders by current stage</b>."},
+ {t:"Handed to the carrier, 18 days later",ev:"handed_to_carrier",sim:"10 Aug 11:51:00",time:"1,289.6 s (≈ 21.5 min)",nodes:["prod","ks1"],edges:["e_s1"],
+  pk:()=>[{path:toShip(1),label:"handed_to_carrier",color:C.high}],
+  what:"Only now is the seller's real handling time known. The handoff message adds these facts to the checkout columns. The seller's shipping limit was 31 Jul 13:24, so the parcel left almost 10 days late.",
+  msg:`{"event_id": "6bd0a556ad4cadcb", "event_type": "handed_to_carrier",
+ "event_time": "2018-08-10T11:51:00", "order_id": "b77c7b2203310a5160f61121eaf97415",
+ "customer_state": "DF", "estimated_delivery_date": "2018-08-13T00:00:00",
+ "approval_lag_h": 2.63, "handling_days": 18.04,
+ "seller_overrun_days": 9.93, "post_approval_days": 17.93,
+ "shipping_limit_ts": "2018-07-31T13:24:38", "promise_buffer_route": 9.04, ...}`,
+  see:"System view → <b>Events sent by the producer (per second)</b>."},
+ {t:"Model 3 re-scores: HIGH alert",ev:"handed_to_carrier",sim:"10 Aug 11:51:00",time:"≈ 0.2 s",nodes:["ks1","sc1","dp1","al"],edges:["e_ss1","e_b1","e_bv","e_t1","e_ta"],
+  pk:()=>[{path:shipToSc(1),label:"raw 0.951",color:C.high,r:10},{path:toPred(1),label:"prediction",color:C.pred,delay:260},{path:toAlerts(1),label:"HIGH alert",color:C.high,delay:320}],
+  what:"Model 3 (XGBoost, 10 columns including handling_days and seller_overrun_days) re-scores the order. The raw score passes the threshold and R2 fires, so the scorer writes the prediction and an alert, then commits.",
+  kv:[["Model 3 raw score","0.951 ≥ threshold 0.7364 → model alert (R9)"],["calibrated P(late)","0.89 (was 0.02 at checkout)"],["R2 missed ship deadline","yes: handed over 9.9 days after the limit"],["severity",'<span class="sev HIGH">HIGH</span> = model alert at handoff'],["warning time","2.5 days before the promised date (13 Aug)"]],
+  msg:`alerts topic (1 partition):
+{"alert_id": "order_risk:b77c7b2203310a5160f61121eaf97415:handoff",
+ "alert_type": "order_risk", "stage": "handoff", "severity": "high",
+ "score": 0.889, "reasons": ["R9_high_model_risk", "R2_missed_ship_deadline"],
+ "customer_state": "DF", "event_time": "2018-08-10T11:51:00"}`,
+  see:"System view → <b>Alerts per minute by reason</b> and <b>Predictions per second by stage</b>."},
+ {t:"DB writer stores prediction, status and alert",ev:"handed_to_carrier",sim:"10 Aug 11:51:00",time:"within 1 s (batch ≤ 500 or 1 s)",nodes:["dp1","al","dbw","t_pr","t_os","t_al"],edges:["e_pb1","e_pd","e_ad","e_dbh","e_dbv","e_d1","e_d2","e_d3"],
+  pk:()=>[{path:predToDb(1,T.predictions),label:"",color:C.pred},{path:predToDb(1,T.order_status),label:"",color:C.pred,delay:50},{path:alertToDb(),label:"",color:C.high,delay:100}],
+  what:"The DB writer collects up to 500 messages or 1 second, writes them in one PostgreSQL transaction and only then commits its Kafka offsets. If it crashes first, the messages are read again and ON CONFLICT ignores the repeats.",
+  list:["predictions: (order_id, 'handoff'), raw 0.951, P(late) 0.89, alert = true.","order_status: current_stage = handoff, m3_probability = 0.89, any_alert = true, reason_tags merged.","alerts: order_risk:b77c7b22…:handoff with severity high."],
+  see:"System view → <b>Database rows written per second</b>."},
+ {t:"Window aggregator updates DF and the seller",ev:"handed_to_carrier",sim:"window closes ≈ 11 Aug 06:00",time:"saved every 5 s; closes ≈ 45 s later",nodes:["dp1","agg","t_sw","t_se","t_as"],edges:["e_pa","e_agh","e_agv","e_a1","e_a2","e_a3"],
+  pk:()=>[{path:predToAgg(1),label:"prediction",color:C.pred},{path:aggToPg(T.state_daily_windows),label:"",color:C.win,delay:250},{path:aggToPg(T.seller_daily_windows),label:"",color:C.win,delay:290},{path:aggToPg(T.aggregator_state),label:"",color:C.win,delay:330}],
+  what:"The prediction is added to the 1-day windows of its event time. Its prediction_id is remembered per day, so a re-delivered copy is not counted twice.",
+  kv:[["DF window 10 Aug","handoffs + 1, m3_alerts + 1, average Model 3 probability"],["seller 312ba1d7… 10 Aug","handoffs + 1, r2_missed_deadline + 1"],["watermark","newest event time − 6 h; the 10 Aug window closes when events reach 11 Aug 06:00"],["checkpoint","windows + aggregator state + Kafka offsets in ONE transaction"]],
+  see:"Business view → <b>States — last 7 simulated days</b> and <b>Top delay-prone sellers</b>."},
+ {t:"Delivered 7 days late",ev:"delivered",sim:"20 Aug 23:46:34",time:"1,919.4 s (≈ 32 min)",nodes:["prod","ks1","sc1","dp1","agg","t_os","t_sw"],edges:["e_s1","e_ss1","e_b1","e_bv","e_t1","e_pa","e_agh","e_agv","e_a1"],
+  pk:()=>[{path:toShip(1),label:"delivered",color:C.high},{path:shipToSc(1),label:"",color:C.high,delay:200},{path:toPred(1),label:"is_late = 1",color:C.pred,delay:420},{path:predToAgg(1),label:"",color:C.pred,delay:640},{path:aggToPg(T.state_daily_windows),label:"",color:C.win,delay:900}],
+  what:"The customer received the parcel on 20 Aug; the promise was 13 Aug. The delivered event carries the real outcome, which is stored next to the predictions so that predicted and actual late rates can be compared live.",
+  kv:[["is_late_actual","1"],["order_status","current_stage = delivered, delivered_time set"],["DF window 20 Aug","deliveries + 1, late_deliveries + 1"],["R8 region surge","checked when the window closes: DF had 42 deliveries in the last 7 days (fewer than 50) at 9.5% late → no surge alert"]],
+  see:"Business view → <b>Actual late rate vs predicted</b>."},
+ {t:"Grafana shows it to the operator",ev:"dashboards",sim:"—",time:"every 5 s refresh",nodes:["t_al","t_os","t_pr","g_bz"],edges:["e_pgb"],
+  pk:()=>[{path:pgToBiz(T.alerts),label:"SQL query",color:C.high},{path:pgToBiz(T.order_status),label:"",color:C.pred,tmp:true,delay:60}],
+  what:"Grafana queries PostgreSQL views every 5 seconds. Nothing is pushed; it reads what the pipeline has stored.",
+  list:["Alert feed: the HIGH alert for b77c7b22… with reasons R9 + R2 appears at the top.","Live risk: the order jumps from 2% to 89% at handoff.","Afterwards it counts as a correct catch: flagged at handoff and really late."],
+  see:"Business view → <b>Alert feed (newest first)</b>, <b>Live risk</b>, <b>Order alerts</b> stat."},
+ {t:"Prometheus watches the pipeline",ev:"metrics",sim:"—",time:"every 5 s",nodes:["prod","sc1","dbw","agg","exp","prom","g_sy"],edges:["e_exk","e_exp","e_prs"],
+  pk:()=>[...metrics([[240,320],[564,291],[888,276],[888,396]]),{path:[[728,502],[728,532],[1204,532],[1204,470]],label:"",color:C.pred,r:5,delay:100},{path:[[1204,420],[1204,307]],label:"",color:C.pred,delay:260}],
+  what:"Every service exposes counters and timings on /metrics, and kafka-exporter reads offsets and consumer lag from Kafka. Prometheus collects them every 5 s; the System view reads Prometheus.",
+  list:["scorer_alerts_total{reason=\"R9_high_model_risk\"} and {reason=\"R2_missed_ship_deadline\"} each + 1.","scorer_predictions_total{stage=\"handoff\", model=\"model3\"} + 1.","The send → published time feeds the latency histogram."],
+  see:"System view → <b>End-to-end latency</b>, <b>Consumer lag per group</b>, <b>Alerts per minute by reason</b>."}
+]};
+
+// ===== NONE: 93483848… MG =====
+S.none={color:C.none,steps:[
+ {t:"The order in the replay files",ev:"order facts",sim:"20 Jul 2018 00:41",time:"before the replay",nodes:["data"],edges:[],
+  pk:()=>[{path:[P.data],label:"93483848…",color:C.none}],
+  what:"A real order from a large, reliable seller. It goes through the same four stages without raising any alert.",
+  kv:[["order_id","934838488a3fc133b3cb9b1f716c5937"],["placed","2018-07-20 00:41:44 (Friday)"],["route","seller in SP → customer in MG, 459 km"],["item","perfumery · R$ 49.99 + R$ 18.45 freight · 250 g"],["promised delivery","2018-08-10 (21.0 days)"],["seller history","1,596 earlier orders, 5.3% late"],["real outcome","delivered 2018-07-27, 13.5 days early"]],
+  see:"Nothing yet."},
+ {t:"Producer sends order_placed",ev:"order_placed",sim:"20 Jul 00:41:44",time:"1.7 s after the live replay starts",nodes:["data","prod"],edges:["e_dp"],
+  pk:()=>[{path:[P.data,P.prod],label:"order_placed",color:C.none}],
+  what:"20 Jul 00:41:44 is 2,504 simulated seconds after the replay start; ÷ 1440 = 1.7 real seconds. The event is sent with key = order_id.",
+  see:"System view → <b>Events sent by the producer (per second)</b>."},
+ {t:"Kafka stores it in orders P2",ev:"order_placed",sim:"20 Jul 00:41:44",time:"t ≈ 0.02 s",nodes:["prod","ko2"],edges:["e_o2"],
+  pk:()=>[{path:toOrders(2),label:"key = order_id",color:C.none}],
+  what:"CRC32(\"93483848…\") mod 3 = 2, so partition P2. All four events of this order use P2 of their topic.",
+  see:"Kafka UI → <b>orders</b> → partition 2."},
+ {t:"Model 1 scores it at checkout",ev:"order_placed",sim:"20 Jul 00:41:44",time:"≈ 0.2 s",nodes:["ko2","sc2","dp2"],edges:["e_os2","e_b2","e_bv","e_t2"],
+  pk:()=>[{path:ordToSc(2),label:"raw 0.258",color:C.none},{path:toPred(2),label:"prediction",color:C.pred,delay:300}],
+  what:"The copy that owns P2 scores the order and publishes the prediction only.",
+  kv:[["Model 1 raw score","0.258 < 0.7493 → no alert"],["calibrated P(late)","0.007"],["rules","R5 no (21 days), R6 no (459 km), R7 no (5.3% late)"],["severity",'<span class="sev NONE">NO ALERT</span>']],
+  see:"Business view → <b>Orders placed</b>."},
+ {t:"Payment approved in 14 minutes",ev:"order_approved",sim:"20 Jul 00:55:21",time:"2.3 s",nodes:["prod","ks2","sc2","dp2"],edges:["e_s2","e_ss2","e_b2","e_bv","e_t2"],
+  pk:()=>[{path:toShip(2),label:"order_approved",color:C.none},{path:shipToSc(2),label:"",color:C.none,delay:200},{path:toPred(2),label:"",color:C.pred,delay:420}],
+  what:"approval_lag_h = 0.23 hours, far below the 24-hour limit of R1, so no tag is added.",
+  see:"Business view → <b>Orders by current stage</b>."},
+ {t:"Handed to the carrier the same day",ev:"handed_to_carrier",sim:"20 Jul 13:50:00",time:"34.6 s",nodes:["prod","ks2"],edges:["e_s2"],
+  pk:()=>[{path:toShip(2),label:"handed_to_carrier",color:C.none}],
+  what:"The seller shipped 13 hours after the purchase, 5.5 days before its shipping limit (26 Jul).",
+  msg:`{"event_type": "handed_to_carrier", "event_time": "2018-07-20T13:50:00",
+ "order_id": "934838488a3fc133b3cb9b1f716c5937", "customer_state": "MG",
+ "handling_days": 0.55, "seller_overrun_days": -5.46,
+ "post_approval_days": 0.54, "promise_buffer_route": 9.67, ...}`,
+  see:"System view → <b>Events sent by the producer</b>."},
+ {t:"Model 3 agrees: no risk",ev:"handed_to_carrier",sim:"20 Jul 13:50:00",time:"≈ 0.2 s",nodes:["ks2","sc2","dp2"],edges:["e_ss2","e_b2","e_bv","e_t2"],
+  pk:()=>[{path:shipToSc(2),label:"raw 0.116",color:C.none,r:10},{path:toPred(2),label:"prediction",color:C.pred,delay:260}],
+  what:"No alert, so only the prediction is written to delay-predictions P2. The scorer still waits for Kafka's confirmation before it commits.",
+  kv:[["Model 3 raw score","0.116 < 0.7364 → no alert"],["calibrated P(late)","0.00"],["R2 missed ship deadline","no: shipped 5.5 days early"],["severity",'<span class="sev NONE">NO ALERT</span>']],
+  see:"System view → <b>Predictions per second by stage</b>."},
+ {t:"Stored and counted",ev:"handed_to_carrier",sim:"window closes ≈ 21 Jul 06:00",time:"within 1 s; window ≈ 41 s later",nodes:["dp2","dbw","agg","t_pr","t_os","t_sw","t_se","t_as"],edges:["e_pb","e_pd","e_dbh","e_dbv","e_d1","e_d2","e_pa","e_agh","e_agv","e_a1","e_a2","e_a3"],
+  pk:()=>[{path:predToDb(2,T.predictions),label:"",color:C.pred},{path:predToDb(2,T.order_status),label:"",color:C.pred,delay:50},{path:predToAgg(2),label:"",color:C.pred,delay:100},{path:aggToPg(T.state_daily_windows),label:"",color:C.win,delay:360},{path:aggToPg(T.seller_daily_windows),label:"",color:C.win,delay:400}],
+  what:"The DB writer inserts the handoff prediction and moves order_status to handoff. The aggregator adds the order to the MG window and to the seller's window for 20 Jul.",
+  list:["MG window 20 Jul: handoffs + 1 (no Model 3 alert).","Seller cc419e06… 20 Jul: handoffs + 1, r2_missed_deadline + 0."],
+  see:"Business view → <b>States — last 7 simulated days</b>."},
+ {t:"Delivered 13.5 days early",ev:"delivered",sim:"27 Jul 13:03:56",time:"452.7 s (≈ 7.5 min)",nodes:["prod","ks2","sc2","dp2","dbw","t_os"],edges:["e_s2","e_ss2","e_b2","e_bv","e_t2","e_pb","e_pd","e_dbh","e_dbv","e_d2"],
+  pk:()=>[{path:toShip(2),label:"delivered",color:C.none},{path:shipToSc(2),label:"",color:C.none,delay:200},{path:toPred(2),label:"is_late = 0",color:C.pred,delay:420},{path:predToDb(2,T.order_status),label:"",color:C.pred,delay:640}],
+  what:"The promise was 10 Aug; the parcel arrived on 27 Jul. is_late_actual = 0 is stored with the order, and the MG window for 27 Jul counts one more on-time delivery.",
+  see:"Business view → <b>Actual late rate vs predicted</b>."},
+ {t:"Grafana and Prometheus",ev:"dashboards",sim:"—",time:"every 5 s",nodes:["t_os","g_bz","prom","g_sy","sc2","exp"],edges:["e_exk","e_exp","e_prs"],
+  pk:()=>[{path:pgToBiz(T.order_status),label:"SQL query",color:C.none,tmp:true},...metrics([[564,396]]),{path:[[1204,420],[1204,307]],label:"",color:C.pred,delay:260}],
+  what:"No alert appears in the feed. Low predicted risk and an on-time delivery make it a correct 'safe' order. Prometheus counts it under scorer_predictions_total for each stage.",
+  see:"Business view → <b>Orders by current stage</b>; System view → <b>Predictions per second by stage</b>."}
+]};
+
+// ===== REJECTED: demo-3 =====
+S.rej={color:C.rej,steps:[
+ {t:"A broken message is sent",ev:"fault demo 4",sim:"—",time:"any time during a replay",nodes:["prod"],edges:[],
+  pk:()=>[{path:[P.prod],label:"teleported?",color:C.rej}],
+  what:"For the fault-tolerance demo, ops/inject_bad_message.py runs once in a separate container from the same image (shown here in the producer's place). It sends four messages a faulty system could produce. This one has an event type the system does not know.",
+  msg:`docker compose run --rm --entrypoint python scorer-1 ops/inject_bad_message.py
+
+key "demo-3" → shipment-events:
+{"event_id": "x", "event_type": "teleported",
+ "event_time": "2018-06-01T10:00:00", "order_id": "demo-3"}`,
+  see:"Nothing yet."},
+ {t:"Kafka stores it in shipment-events P0",ev:"shipment-events",sim:"—",time:"t ≈ 0.02 s",nodes:["prod","ks0"],edges:["e_s0"],
+  pk:()=>[{path:toShip(0),label:"key demo-3",color:C.rej}],
+  what:"Kafka does not look inside messages. CRC32(\"demo-3\") mod 3 = 0, so it lands in partition P0 like any other event.",
+  see:"Kafka UI → <b>shipment-events</b> → partition 0."},
+ {t:"The scorer rejects it",ev:"validation",sim:"—",time:"≈ 0.2 s",nodes:["ks0","sc0"],edges:["e_ss0"],
+  pk:()=>[{path:shipToSc(0),label:"✕ invalid",color:C.rej}],
+  what:"Every input is checked before scoring: valid JSON, the four identity fields, a known event type, the fields that type needs, and a readable event time. This one fails, so it is never scored and cannot create a false prediction.",
+  kv:[["reason","unknown_event_type"],["detail","teleported"],["other three demo messages","bad_json · missing_fields · bad_event_time"],["status",'<span class="sev REJ">REJECTED</span>']],
+  see:"—"},
+ {t:"Kept in rejected_events, stream continues",ev:"rejected_events",sim:"—",time:"same batch",nodes:["sc0","t_rj"],edges:["e_rj"],
+  pk:()=>[{path:[[564,scY(0)],[564,420],[564,512],[1048,512],[1048,446],[1048,T.rejected_events]],label:"rejected",color:C.rej}],
+  what:"The scorer saves the raw text with the reason, then carries on with the rest of the batch and commits as usual. A bad message never stops the stream, and the UNIQUE (topic, partition, offset) key stops a re-read from storing it twice.",
+  msg:`rejected_events:
+ source = <scorer copy>   reason = unknown_event_type   detail = teleported
+ topic = shipment-events  kafka_partition = 0           kafka_offset = <n>
+ payload = {"event_id":"x","event_type":"teleported",...}
+
+SELECT reason, detail, topic FROM rejected_events ORDER BY id DESC LIMIT 5;`,
+  list:["The producer also stores 154 real events dated before their own order here, with reason event_before_purchase, instead of sending them."],
+  see:"PostgreSQL table <b>rejected_events</b>."},
+ {t:"Dashboards show the rejection",ev:"dashboards",sim:"—",time:"within 5–10 s",nodes:["t_rj","g_bz","sc0","prom","g_sy"],edges:["e_prs"],
+  pk:()=>[{path:pgToBiz(T.rejected_events),label:"COUNT(*)",color:C.rej,tmp:true},...metrics([[564,186]]),{path:[[1204,420],[1204,307]],label:"",color:C.rej,delay:260}],
+  what:"The Business view counts the rows in rejected_events, and the scorer's scorer_rejected_total{reason} counter goes up by one in Prometheus. The demo sends four messages, so both show 4.",
+  see:"Business view → <b>Rejected messages</b> stat; System view → <b>Rejected messages and rebalances</b>."}
+]};
+
+// ---------- UI ----------
+let cur="high",idx=0,playing=false,playTimer=null;
+const stepsEl=document.getElementById("steps"),detail=document.getElementById("detail"),counter=document.getElementById("counter");
+const esc=s=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+function renderList(){const sc=S[cur];stepsEl.innerHTML="";
+  sc.steps.forEach((st,i)=>{const li=document.createElement("li");const b=document.createElement("button");b.className="step";b.id=`st-${cur}-${i}`;
+    b.innerHTML=`<b>${String(i+1).padStart(2,"0")}</b><span>${esc(st.t)}<span class="ev">${esc(st.ev)}</span></span>`;b.addEventListener("click",()=>{stop();go(i)});li.appendChild(b);stepsEl.appendChild(li)})}
+function renderDetail(){const sc=S[cur],st=sc.steps[idx];
+  let h=`<div class="eyebrow"><span>Step ${idx+1} of ${sc.steps.length}</span>${st.sim&&st.sim!=="—"?`<span>2018 time: ${esc(st.sim)}</span>`:""}<span class="time">⏱ ${esc(st.time)}</span></div><h2>${esc(st.t)}</h2><p class="what">${esc(st.what)}</p>`;
+  if(st.kv){h+=`<div class="label">Data at this point</div><dl class="kv">`+st.kv.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${v.includes("<span")?v:esc(v)}</dd>`).join("")+`</dl>`}
+  if(st.msg){h+=`<div class="label">The message</div><pre class="msg">${esc(st.msg)}</pre>`}
+  if(st.list){h+=`<ul>`+st.list.map(x=>`<li>${esc(x)}</li>`).join("")+`</ul>`}
+  if(st.see&&st.see!=="—")h+=`<div class="see"><strong>Where to see it:</strong> ${st.see}</div>`;
+  detail.innerHTML=h}
+function highlight(){const st=S[cur].steps[idx];const on=new Set(st.nodes);
+  Object.entries(nodeEl).forEach(([id,g])=>{g.classList.toggle("on",on.has(id))});
+  Object.entries(edgeEl).forEach(([id,e])=>{const a=st.edges.includes(id);e.classList.toggle("on",a);if(!NOARROW.has(id))e.setAttribute("marker-end",a?"url(#arr2)":"url(#arr)")});
+  stepsEl.querySelectorAll(".step").forEach((b,i)=>{b.classList.toggle("done",i<idx);if(i===idx)b.setAttribute("aria-current","step");else b.removeAttribute("aria-current")});
+  counter.textContent=`${idx+1} / ${S[cur].steps.length}`}
+function go(i,animate=true){idx=Math.max(0,Math.min(i,S[cur].steps.length-1));highlight();renderDetail();return drawPackets(S[cur].steps[idx].pk(),animate)}
+function pick(s){stop();cur=s;document.querySelectorAll(".tab").forEach(t=>t.setAttribute("aria-selected",t.dataset.s===s?"true":"false"));renderList();go(0,false)}
+function stop(){playing=false;clearTimeout(playTimer);document.getElementById("b-play").textContent="Auto-play"}
+function loop(){if(!playing)return;if(idx>=S[cur].steps.length-1){stop();return}
+  go(idx+1).then(()=>{if(playing)playTimer=setTimeout(loop,3200)})}
+document.querySelectorAll(".tab").forEach(t=>t.addEventListener("click",()=>pick(t.dataset.s)));
+document.getElementById("b-next").addEventListener("click",()=>{stop();go(idx+1)});
+document.getElementById("b-prev").addEventListener("click",()=>{stop();go(idx-1,false)});
+document.getElementById("b-restart").addEventListener("click",()=>{stop();go(0,false)});
+document.getElementById("b-play").addEventListener("click",e=>{if(playing){stop();return}playing=true;e.currentTarget.textContent="Pause";
+  if(idx>=S[cur].steps.length-1)go(0,false);playTimer=setTimeout(loop,600)});
+document.addEventListener("keydown",e=>{if(e.target.closest&&e.target.closest("input,textarea"))return;
+  if(e.key==="ArrowRight"){stop();go(idx+1)}else if(e.key==="ArrowLeft"){stop();go(idx-1,false)}});
+pick("high");
+})();
+</script>
