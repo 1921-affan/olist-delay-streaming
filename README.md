@@ -163,3 +163,20 @@ tests/             offline tests (pytest), no Kafka needed
 ```
 
 Offline tests (optional, needs Python with pandas, scikit-learn, pytest): `python -m pytest -q tests`
+
+
+## Quick start
+
+```powershell
+git clone https://github.com/1921-affan/olist-delay-streaming.git
+cd olist-delay-streaming
+Copy-Item .env.example .env      # then open .env and set your own passwords
+powershell -ExecutionPolicy Bypass -File .\demo_reset.ps1
+```
+
+Open Grafana at http://localhost:3000 and Kafka UI at http://localhost:8080.
+
+## Data
+
+Brazilian E-Commerce Public Dataset by Olist (Kaggle), licensed CC BY-NC-SA 4.0:
+https://www.kaggle.com/datasets/olistbr/brazilian-e-commerce
